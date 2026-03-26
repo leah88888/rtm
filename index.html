@@ -48,8 +48,8 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .child-bar-label{font-size:10px;font-weight:700;color:var(--text-muted);letter-spacing:.08em;text-transform:uppercase;flex-shrink:0;}
 .child-select{border:1.5px solid var(--border);border-radius:7px;padding:6px 10px;font-size:13px;font-family:'Noto Sans KR',sans-serif;color:var(--text-primary);background:var(--bg);min-width:150px;max-width:240px;}
 .child-select:focus{outline:none;border-color:var(--accent);background:#fff;}
-.child-status{font-size:11px;color:var(--text-muted);margin-left:auto;}
-.child-status.saved{color:var(--accent);}
+.child-status{font-size:13px;font-weight:600;color:var(--text-muted);margin-left:auto;}
+.child-status.saved{color:var(--accent);font-size:14px;}
 
 /* ── App body: sidebar + main ── */
 .app-body{display:flex;flex:1;}
@@ -299,10 +299,16 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
       <option value="">— 아동을 선택하세요 —</option>
     </select>
     <button class="btn btn-secondary btn-sm" onclick="openAddChildModal()">+ 새 아동 등록</button>
+    <button class="btn btn-secondary btn-sm" onclick="openEditChildModal()" id="btnEditChild" style="display:none;">✏️ 정보 수정</button>
+    <button class="btn btn-ghost btn-sm" onclick="confirmDeleteChild()" id="btnDeleteChild" style="display:none;">🗑 아동 삭제</button>
     <button class="btn btn-save btn-sm" onclick="saveObservation()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
       관찰 저장
     </button>
+    <button class="btn btn-secondary btn-sm" onclick="startFreshInput()" style="border-color:var(--accent);color:var(--accent);">
+      ✦ 새로 입력 시작
+    </button>
+    <button class="btn btn-ghost btn-sm" onclick="resetAll()" title="현재 입력 초기화">↺ 초기화</button>
     <span class="child-status" id="childStatus">아동을 선택하거나 새로 등록하세요</span>
   </div>
 
@@ -602,6 +608,20 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   </div>
 </div>
 
+<!-- 아동 정보 수정 모달 -->
+<div class="modal-bg" id="editChildModal" style="display:none;">
+  <div class="modal-box">
+    <div class="modal-title">아동 정보 수정</div>
+    <input class="modal-input" type="text" id="editChildName" placeholder="아동 이름 *">
+    <input class="modal-input" type="text" id="editChildBirth" placeholder="생년월일 (예: 2019-03-15)">
+    <input class="modal-input" type="text" id="editChildNote" placeholder="메모 (선택)">
+    <div class="modal-btns">
+      <button class="btn btn-ghost" onclick="closeEditModal()">취소</button>
+      <button class="btn btn-primary" onclick="updateChild()">저장</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -609,7 +629,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 const SUPABASE_URL='https://abnkeudlwpnawqvfwyul.supabase.co';
 const SUPABASE_KEY='sb_publishable_ylN_xrs0UntNoRZ7KF-d8Q_zK1mJcyZ';
 async function sb(path,method='GET',body=null){
-  const opts={method,headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY,'Content-Type':'application/json','Prefer':method==='POST'?'return=representation':''}};
+  const opts={method,headers:{'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY,'Content-Type':'application/json','Prefer':method==='POST'?'return=representation':method==='PATCH'?'return=representation':''}};
   if(body) opts.body=JSON.stringify(body);
   const res=await fetch(SUPABASE_URL+'/rest/v1/'+path,opts);
   if(!res.ok){const e=await res.text();throw new Error(e);}
@@ -693,11 +713,15 @@ async function addChild(){
 async function onChildSelect(){
   const id=document.getElementById('childSelect').value;
   currentChildId=id||null;
+  const editBtn=document.getElementById('btnEditChild');
+  const delBtn=document.getElementById('btnDeleteChild');
   if(!id){
     document.getElementById('childName').value='';
     document.getElementById('childBirth').value='';
     document.getElementById('childStatus').textContent='아동을 선택하거나 새로 등록하세요';
     document.getElementById('childStatus').className='child-status';
+    if(editBtn)editBtn.style.display='none';
+    if(delBtn)delBtn.style.display='none';
     hideDataSections();return;
   }
   const child=childrenList.find(c=>c.id===id);
@@ -707,7 +731,71 @@ async function onChildSelect(){
     document.getElementById('childStatus').textContent=child.name+' 선택됨';
     document.getElementById('childStatus').className='child-status saved';
   }
+  if(editBtn)editBtn.style.display='';
+  if(delBtn)delBtn.style.display='';
   await loadObservations();
+}
+
+// ── Edit child ──
+function openEditChildModal(){
+  if(!currentChildId){showToast('아동을 먼저 선택해 주세요');return;}
+  const child=childrenList.find(c=>c.id===currentChildId);
+  if(!child)return;
+  document.getElementById('editChildName').value=child.name||'';
+  document.getElementById('editChildBirth').value=child.birthdate||'';
+  document.getElementById('editChildNote').value=child.note||'';
+  document.getElementById('editChildModal').style.display='flex';
+  document.getElementById('editChildName').focus();
+}
+function closeEditModal(){document.getElementById('editChildModal').style.display='none';}
+async function updateChild(){
+  if(!currentChildId)return;
+  const name=document.getElementById('editChildName').value.trim();
+  if(!name){showToast('이름을 입력해 주세요');return;}
+  try{
+    await sb('children?id=eq.'+currentChildId,'PATCH',{name,birthdate:document.getElementById('editChildBirth').value.trim()||null,note:document.getElementById('editChildNote').value.trim()||null});
+    closeEditModal();await loadChildren();
+    document.getElementById('childSelect').value=currentChildId;
+    await onChildSelect();
+    showToast('정보가 수정되었습니다 ✓');
+  }catch(e){showToast('수정 실패: '+e.message);}
+}
+
+// ── Delete child ──
+async function confirmDeleteChild(){
+  if(!currentChildId){showToast('아동을 먼저 선택해 주세요');return;}
+  const child=childrenList.find(c=>c.id===currentChildId);
+  const name=child?child.name:'아동';
+  if(!confirm(`"${name}"을(를) 삭제하시겠습니까?\n관련 관찰 기록도 모두 삭제됩니다.`))return;
+  try{
+    await sb('children?id=eq.'+currentChildId,'DELETE');
+    currentChildId=null;
+    document.getElementById('childSelect').value='';
+    document.getElementById('childName').value='';
+    document.getElementById('childBirth').value='';
+    document.getElementById('childStatus').textContent='아동을 선택하거나 새로 등록하세요';
+    document.getElementById('childStatus').className='child-status';
+    document.getElementById('btnEditChild').style.display='none';
+    document.getElementById('btnDeleteChild').style.display='none';
+    await loadChildren();hideDataSections();
+    showToast(name+' 삭제 완료');
+  }catch(e){showToast('삭제 실패: '+e.message);}
+}
+
+// ── Fresh input start ──
+function startFreshInput(){
+  if(!confirm('새로 입력을 시작합니다.\n현재 입력 내용은 사라집니다. (저장된 기록은 유지)'))return;
+  STAGES.forEach(s=>AXES.forEach(a=>{scores[s][a.key]=null;}));
+  AXES.forEach(a=>{teacherComments[a.key]='';});
+  parentGuideText='';brainScienceText='';analysisResult=null;
+  document.getElementById('obsDate').value=new Date().toISOString().slice(0,10);
+  document.getElementById('teacherName').value='';
+  document.getElementById('analysisPanel').classList.remove('visible');
+  document.getElementById('analysisEmpty').style.display='';
+  document.getElementById('reportOutput').classList.remove('visible');
+  document.getElementById('reportEmpty').style.display='';
+  buildTable();restoreEditTab();updateProgress();
+  showSubtab('input');showToast('새로 입력을 시작합니다');
 }
 
 async function loadObservations(){
@@ -992,17 +1080,25 @@ function buildTable(){
     const tr=document.createElement('tr');
     let html=`<td><div class="axis-name">${ax.name}</div><div class="axis-desc">${ax.desc}</div></td>`;
     STAGES.forEach(st=>{
-      html+=`<td><div class="score-btn-group">${[0,1,2].map(v=>`<button class="score-btn" onclick="setScore('${st}','${ax.key}',${v})" id="btn_${st}_${ax.key}_${v}">${v}</button>`).join('')}</div></td>`;
+      html+=`<td><div class="score-btn-group">${[0,1,2].map(v=>`<button class="score-btn" id="btn_${st}_${ax.key}_${v}" onclick="setScore('${st}','${ax.key}',${v})">${v}</button>`).join('')}</div></td>`;
     });
     tr.innerHTML=html;tbody.appendChild(tr);
   });
+  // ★ 핵심 수정: 테이블 생성 직후 현재 scores 상태를 바로 반영
+  applyScoreStyles();
+  updateProgress();
+}
+function applyScoreStyles(){
+  STAGES.forEach(st=>AXES.forEach(ax=>[0,1,2].forEach(v=>{
+    const btn=document.getElementById(`btn_${st}_${ax.key}_${v}`);
+    if(!btn)return;
+    btn.className='score-btn';
+    if(scores[st][ax.key]===v) btn.classList.add(`active-${v}`);
+  })));
 }
 function setScore(stage,axisKey,val){
   scores[stage][axisKey]=val;
-  STAGES.forEach(st=>AXES.forEach(ax=>[0,1,2].forEach(v=>{
-    const btn=document.getElementById(`btn_${st}_${ax.key}_${v}`);
-    if(btn){btn.className='score-btn';if(scores[st][ax.key]===v)btn.classList.add(`active-${v}`);}
-  })));
+  applyScoreStyles();
   updateProgress();
 }
 function updateProgress(){
